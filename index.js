@@ -1,100 +1,188 @@
-const express = require('express');
 const mysql = require('mysql');
-const cors = require('cors');
-
-const app = express();
-const SELECT_ALL_EMPLOYEES = 'SELECT * FROM hrms.person';
-const SELECT_EMPLOYEE = 'SELECT * FROM hrms.person WHERE Person_ID = ?';
-
-
-const connection = mysql.createConnection({
-	host: 'localhost',
-	user: 'root',
-	password: '12345678',
-	database: 'hrms',
-	insecureAuth : true
+const express = require('express');
+const cors = require('cors')
+var app = express();
+const bodyparser = require('body-parser');
+app.use(cors())
+app.use(bodyparser.json());
 
 
-});
-connection.connect(err =>{
-	if(err){
-		console.log(err);
-		return err;
-
-	} 
-	else{
-		console.log('connected to the database');
-	}
-
-app.get('/employee', (req, res) => {
-    connection.query(SELECT_ALL_EMPLOYEES, [req.params.id], (err, results) => {
-        if (err) {
-            return res.send(err);
-        } else {
-            console.log(results);
-            return res.json({
-                data: results
-            })
-        }
-    });
+//DB Connection Setup
+var mysqlConnection = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '12345678',
+    database: 'hrms',
+    multipleStatements: true
 });
 
+mysqlConnection.connect((err) => {
+    if (!err)
+        console.log('DB connection succeded.');
+    else
+        console.log('DB connection failed \n Error : ' + JSON.stringify(err, undefined, 2));
 });
 
-//get a  employee with a specific id
-app.get('/employee/:id',(req,res)=>{
-    connection.query(SELECT_EMPLOYEE, [req.params.id], (err, rows, fields)=>{
-        if(err)
-        console.log(err);
-        else {
-        	res.json(rows);
-        }
-        
+
+
+
+
+//Get all employees
+app.get('/employees', (req, res) => {
+    mysqlConnection.query('SELECT * FROM Person', (err, rows, fields) => {
+        if (!err)
+            res.send({data: rows});
+        else
+            console.log(err);
     })
-
-
 });
 
-//delete employee by specific Id
-app.delete('/employee/:id',(req,res)=>{
-    connection.query('DELETE FROM hrms.person WHERE Person_ID = ?', [req.params.id], (err, rows, fields)=>{
-        if(err)
-        console.log(err);
-        else {
-        	res.send('deleted');
-        }
-        
+//Get an employee by specific ID
+app.get('/employees/:id', (req, res) => {
+    mysqlConnection.query('SELECT * FROM Person WHERE Person_ID = ?', [req.params.id], (err, rows, fields) => {
+        if (!err)
+            res.send({data: rows});
+        else
+            console.log(err);
     })
-
-
 });
 
+//Delete an employee
+app.delete('/employees/:id', (req, res) => {
+    mysqlConnection.query('DELETE FROM Person WHERE Person_ID = ?', [req.params.id], (err, rows, fields) => {
+        if (!err)
+            res.send('Deleted successfully.');
+        else
+            console.log(err);
+    })
+});
 
-//Insert and employye
-app.post('/employee', (req,res) => {
-    let hold = req.body;
-    var employees = " SET @F_Name = ?; SET @L_Name = ?; SET @Email = ?; \
-        SET @Phone_Number = ?; \
-        SET @Date_Of_Birth = ?;SET @Location_ID = ?;SET @Department_ID = ?; \
-        SET @Employee_Address = ?;SET @Passwords = ?;SET @Gender = ?; \
-        SET @Role_ID = ?;SET @Hire_Date = ?;SET @Reporting_Person_ID= ?; SET @Project_ID = ?; \
-        SET @Person_Type = ?; \
-        CALL newcandidateform(@F_Name,@L_Name,@Email, @Phone_Number,@Date_Of_Birth \
-            @Passwords,@Gender,@Role_ID,@Hire_Date,@Reporting_Person_ID, \
-            @Project_ID,@Person_Type" ;
+//Job history employees
+app.get('/employeesJobHistory', (req, res) => {
+    mysqlConnection.query('SELECT * FROM Job_History', (err, rows, fields) => {
+        if (!err)
+            res.send({data: rows});
+        else
+            console.log(err);
+    })
+});
 
-connection.query(employee, [hold.F_Name, hold.L_Name, hold.Email,
-        hold.Phone_Number, hold.Date_Of_Birth,
-        hold.Passwords, hold.Gender, hold.Role_ID, hold.Hire_Date, hold.Reporting_Person_ID, hold.Project_ID,
-        hold.Person_Type], (err, rows,)=>{
-        if(err)
+//Insert an employee
+app.post('/employeesInsert', (req, res) => {
+    let emp = req.body;
+    var sql = "SET @F_Name = ?;SET @L_Name = ?; SET @Email = ?;SET @Phone_Number= ?;SET @Employee_Address =?; SET @Date_Of_Birth = ?; SET @Gender = ?; SET @Person_Type =?; SET @Hire_Date =?;\
+    CALL addperson(@F_Name,@L_Name,@Email,@Phone_Number,@Employee_Address,@Date_Of_Birth,@Gender,@Person_Type,@Hire_Date);";
+    mysqlConnection.query(sql, [emp.firstName, emp.lastName, emp.email, emp.phoneNumber, emp.address, emp.dob, emp.gender, emp.personType, emp.hireDate], (err, rows, fields) => {
+         if(err)
         console.log(err);
         else
-        res.send(rows);
+        res.send({data: rows});
     })
-
-
-
-app.listen(4000, () => {
-	console.log('db connected on port');
 });
+
+//Update an employee
+app.put('/employeesUpdate', (req, res) => {
+    let emp = req.body;
+    var sql = "SET @Person_ID = ?;SET @F_Name = ?;SET @L_Name = ?;SET @Email = ?;SET @Phone_Number = ?;SET @Employee_Address= ?;\
+    CALL updateperson(@Person_ID,@F_Name,@L_Name,@Email,@Phone_Number,@Employee_Address);";
+    mysqlConnection.query(sql, [emp.personId, emp.firstName, emp.lastName, emp.email, emp.phoneNumber, emp.address], (err, rows, fields) => {
+        if (!err)
+            res.send('Updated successfully');
+        else
+            console.log(err);
+    })
+});
+
+// caculate_salary
+app.get('/personsalary/:id', (req, res) => {
+    let sal = req.params.id;
+    var sql = "SET @Person_ID = ?;\
+    CALL calculate_salary(@Person_ID);";
+    console.log(sal)
+    mysqlConnection.query(sql, [sal], (err, rows, fields) => {
+         if(err)
+        console.log(err);
+        else
+        res.send({data: rows});
+    })
+});
+// Performance_Review
+app.get('/personreview', (req, res) => {
+    let rev = req.body;
+    var sql = "SET @Person_ID = ?;\
+    CALL perform_review(@Person_ID);";
+    mysqlConnection.query(sql, [rev.Person_ID], (err, rows, fields) => {
+         if(err)
+        console.log(err);
+        else
+        res.send({data: rows});
+    })
+});
+
+
+// All public holidays
+app.get('/employeesHoliday', (req, res) => {
+    mysqlConnection.query('SELECT * FROM Public_Holiday', (err, rows, fields) => {
+        if (!err)
+            res.send({data: rows});
+        else
+            console.log(err);
+    })
+})
+
+
+//Public_Holidays
+app.get('/personholiday', (req, res) => {
+    let holi = req.body;
+    var sql = "SET @Person_ID = ?;\
+    CALL PublicHolidays(@Person_ID);";
+    mysqlConnection.query(sql, [holi.Person_ID], (err, rows, fields) => {
+         if(err)
+        console.log(err);
+        else
+        res.send({data: rows});
+    })
+});
+
+// equipment details person
+
+app.get('/equipmentdetailsper', (req, res) => {
+    let equipper = req.body;
+    var sql = "SET @Person_ID = ?;\
+    CALL equipment_details_person(@Person_ID);";
+    mysqlConnection.query(sql, [equipper.Person_ID], (err, rows, fields) => {
+         if(err)
+        console.log(err);
+        else
+        res.send({data: rows});
+    })
+});
+
+// equipment details all
+
+app.get('/equipmentdetailsall', (req, res) => {
+    mysqlConnection.query('SELECT * FROM Equipment', [req.params.id], (err, rows, fields) => {
+        if (!err)
+            res.send({data: rows});
+        else
+            console.log(err);
+    })
+});
+
+//procedure for viewing applicants
+
+app.get('/viewapplicants/:id', (req, res) => {
+    let viewapp = req.params.id;
+    var sql = "SET @Position_ID = ?;\
+    CALL view_job_applicants(@Position_ID);";
+    mysqlConnection.query(sql, [viewapp], (err, rows, fields) => {
+         if(err)
+        console.log(err);
+        else
+        res.send({data: rows});
+    })
+});
+
+
+
+app.listen(4000, () => console.log('Express server is runnig at port no : 4000'));
